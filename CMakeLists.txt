@@ -1,9 +1,10 @@
 # Root CMake file for NDN-Lite over POSIX
 cmake_minimum_required (VERSION 3.5)
-project(ndn-lite)
+project(ndn-lite-exp)
+
 
 option(BUILD_DOCS "Build documentation" OFF)
-option(DYNAMIC_LIB "Build dynamic link library" OFF)
+option(DYNAMIC_LIB "Build dynamic link library" on)
 option(BUILD_PYTHON "Build python bindings" OFF)
 
 if (NOT CMAKE_BUILD_TYPE)
@@ -11,7 +12,8 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 
 add_definitions(-D_GNU_SOURCE)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 -Werror -Wno-format -Wno-int-to-void-pointer-cast -Wno-int-to-pointer-cast")
+set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 -Werror -Wno-format -Wno-int-to-void-pointer-cast -Wno-int-to-pointer-cast")
+# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=c11 -Wno-format -Wno-int-to-pointer-cast -Wunused-parameter -Wunused-variable") #unit test
 set(CMAKE_C_FLAGS_DEBUG "-O0 -ggdb")
 set(CMAKE_C_FLAGS_RELEASE "-O3")
 
@@ -99,6 +101,14 @@ if (DOXYGEN_FOUND AND BUILD_DOCS)
 else ()
   message("Documentation skipped")
 endif ()
+#testprogram
+#add_executable(${DIR_EXAMPLES}/udp-basic-producer.c);
+#target_link_libraries(unittest ndn-lite-ex)
+
+# Unit test program
+add_executable(producer ${DIR_EXAMPLES}/udp-basic-producer.c)
+target_link_libraries(producer ndn-lite)
+#include(${DIR_CMAKEFILES}/unittest.cmake)
 
 # Copy headers
 include(GNUInstallDirs)
@@ -115,6 +125,14 @@ install(DIRECTORY "${PROJECT_SOURCE_DIR}/adaptation"
 install(FILES "${PROJECT_SOURCE_DIR}/ndn-lite.h"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
 )
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/ndn-lite"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        FILES_MATCHING
+        PATTERN "*.h"
+)
+#install(FILES "${PROJECT_SOURCE_DIR}/ndn-lite/util/dll.h"
+#        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+#)
 install(TARGETS ndn-lite
         ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
