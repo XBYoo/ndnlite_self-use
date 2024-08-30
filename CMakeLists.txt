@@ -108,6 +108,8 @@ endif ()
 # Unit test program
 add_executable(producer ${DIR_EXAMPLES}/udp-basic-producer.c)
 target_link_libraries(producer ndn-lite)
+add_executable(consumer ${DIR_EXAMPLES}/udp-basic-consumer.c)
+target_link_libraries(consumer ndn-lite)
 #include(${DIR_CMAKEFILES}/unittest.cmake)
 
 # Copy headers
