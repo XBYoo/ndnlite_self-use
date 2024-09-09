@@ -109,6 +109,10 @@ add_executable(producer ${DIR_EXAMPLES}/udp-basic-producer.c)
 target_link_libraries(producer ndn-lite)
 add_executable(consumer ${DIR_EXAMPLES}/udp-basic-consumer.c)
 target_link_libraries(consumer ndn-lite)
+add_executable(f_p ${DIR_EXAMPLES}/file-transfer-server.c)
+target_link_libraries(f_p ndn-lite)
+add_executable(f_c ${DIR_EXAMPLES}/file-transfer-client.c)
+target_link_libraries(f_c ndn-lite)
 #include(${DIR_CMAKEFILES}/unittest.cmake)
 
 # Copy headers
