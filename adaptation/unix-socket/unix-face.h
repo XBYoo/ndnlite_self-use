@@ -9,7 +9,7 @@
 #ifndef NDN_UNIX_FACE_H_
 #define NDN_UNIX_FACE_H_
 
-#include <sys/socket.h>
+#include <sys/socket.h>//socket API
 #include <sys/un.h>
 #include "ndn-lite/forwarder/forwarder.h"
 #include "ndn-lite/util/msg-queue.h"
