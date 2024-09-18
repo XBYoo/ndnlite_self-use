@@ -2,7 +2,7 @@
 cmake_minimum_required (VERSION 3.5)
 project(ndn-lite-exp)
 
-option(BUILD_DOCS "Build documentation" OFF)
+option(BUILD_DOCS "Build documentation" ON)
 option(DYNAMIC_LIB "Build dynamic link library" on)
 option(BUILD_PYTHON "Build python bindings" OFF)
 
