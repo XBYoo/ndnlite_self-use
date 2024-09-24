@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+#include <netinet/in.h>
 #include "udp-face.h"
 #include "ndn-lite/ndn-error-code.h"
 #include "ndn-lite/ndn-constants.h"
