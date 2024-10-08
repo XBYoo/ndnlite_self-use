@@ -83,7 +83,7 @@ int on_interest(const uint8_t* interest, uint32_t interest_size, void* userdata)
   ndn_interest_from_block(&interest_pkt, interest, interest_size);
   ndn_data_t data;
   ndn_encoder_t encoder;
-  char * str = "I'm a Data packet.";
+  char * str = "I'm a Data packet.'\0'";
 
   printf("On interest\n");
   // 设置数据包的名称

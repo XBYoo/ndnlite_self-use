@@ -125,8 +125,12 @@ on_success(ndn_interest_t* interest)
   //printf("The content of the file is: %s, %lu\n",temp_buffer,strlen(temp_buffer) );
 
   uint8_t data_buf[4096];
-  int data_off;
-  tlv_make_data(data_buf,4096,&data_off,3,TLV_DATAARG_NAME_PTR,&interest->name,TLV_DATAARG_CONTENT_BUF,(uint8_t*)temp_buffer,TLV_DATAARG_CONTENT_SIZE,strlen(temp_buffer));
+  size_t data_off;
+
+  tlv_make_data(data_buf,4096,&data_off,
+  3,TLV_DATAARG_NAME_PTR,&interest->name,
+  TLV_DATAARG_CONTENT_BUF,(uint8_t*)temp_buffer,TLV_DATAARG_CONTENT_SIZE,strlen(temp_buffer));
+
   ndn_forwarder_put_data(data_buf,data_off);
   return;
 }
