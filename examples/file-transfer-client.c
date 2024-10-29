@@ -136,7 +136,7 @@ void on_data(const uint8_t* rawdata, uint32_t data_size, void* userdata)
 
 
 
-// 保存文件的实现，将接收到的文件内容保存到本地
+// 保存文件的实现，将接收到的文件名称保存到本地
 int
 save_file(uint8_t* file_data)
 {
@@ -317,7 +317,6 @@ int main(int argc, char *argv[]){
     
     char c;
     while(running) {
-        // 检查用户输入
         ndn_forwarder_process();
         usleep(10000);   
         // printf("Press 'q' to quit.\n");   
@@ -332,4 +331,7 @@ int main(int argc, char *argv[]){
     ndn_face_destroy(&face->intf);
     return 0;
 }
+
+
+
 

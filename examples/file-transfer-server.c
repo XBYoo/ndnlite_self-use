@@ -305,11 +305,11 @@ int main(int argc, char *argv[]){
   ndn_name_tlv_encode(&encoder, &name_prefix);
 
   // 注册名字前缀，并指定处理兴趣包的回调函数
- 
+  ndn_forwarder_register_prefix(encoder.output_value, encoder.offset, on_interest, NULL);
 
   // 进入事件循环，处理收到的兴趣包
   while (running) {
-    ndn_forwarder_register_prefix(encoder.output_value, encoder.offset, on_interest, NULL);
+
     ndn_forwarder_process();  // 处理转发器中的事件
     usleep(10000);  // 休眠10毫秒，防止占用过多CPU
   }
