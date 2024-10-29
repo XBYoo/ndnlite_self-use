@@ -117,10 +117,13 @@ add_executable(nfd-basic-consumer ${DIR_EXAMPLES}/nfd-basic-consumer.c)
 target_link_libraries(nfd-basic-consumer ndn-lite)
 add_executable(nfd-basic-producer ${DIR_EXAMPLES}/nfd-basic-producer.c)
 target_link_libraries(nfd-basic-producer ndn-lite)
-add_executable(f_p ${DIR_EXAMPLES}/file-transfer-server.c)
-target_link_libraries(f_p ndn-lite)
+add_executable(deamon-producer ${DIR_EXAMPLES}/deamon-producer.c)
+target_link_libraries(deamon-producer ndn-lite)
+add_executable(f_s ${DIR_EXAMPLES}/file-transfer-server.c)
+target_link_libraries(f_s ndn-lite)
 add_executable(f_c ${DIR_EXAMPLES}/file-transfer-client.c)
 target_link_libraries(f_c ndn-lite)
+
 #include(${DIR_CMAKEFILES}/unittest.cmake)
 
 # Copy headers

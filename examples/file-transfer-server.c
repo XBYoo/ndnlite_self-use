@@ -1,33 +1,36 @@
 /*
  * Copyright (C) 2019 Yiran Lei
  *
- * This file is subject to the terms and conditions of the GNU Lesser
- * General Public License v3.0. See the file LICENSE in the top level
- * directory for more details.
+ * 本文件受GNU Lesser General Public License v3.0条款的约束。
+ * 参阅顶层目录中的LICENSE文件以获取更多详细信息。
  *
- * See AUTHORS.md for complete list of NDN IOT PKG authors and contributors.
+ * 查看AUTHORS.md以获取完整的NDN IoT PKG作者和贡献者列表。
  */
 
 /*
- * This file-tranfer-server works with file-transfer-client. 
- * Launch the file-transfer-server, input local port, client ip, client port and name.
- * Launch the file-transfer-client, input local port, server ip, server port, name and the file name.
- * The server will then return the requested file to the client. (if the file exists in the directory)
+ * 本文件实现了一个文件传输服务器，配合文件传输客户端使用。
+ * 启动file-transfer-server，输入本地端口、客户端IP、客户端端口和名称。
+ * 启动file-transfer-client，输入本地端口、服务器IP、服务器端口、名称和文件名。
+ * 服务器会返回客户端请求的文件（如果文件存在于服务器目录中）。
  */
-#include <stdio.h>
-#include <netdb.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <ndn-lite.h>
-#include "ndn-lite/encode/name.h"
-#include "ndn-lite/encode/data.h"
-#include "ndn-lite/encode/interest.h"
-#include "ndn-lite/app-support/ndn-sig-verifier.h"
 
+#include <stdio.h>                 // 标准输入输出库
+#include <netdb.h>                 // 提供网络相关功能
+#include <unistd.h>                // 提供UNIX标准库函数，如sleep等
+#include <stdlib.h>                // 提供通用函数库，如内存分配
+#include <ndn-lite.h>              // NDN-Lite库，处理NDN协议相关功能
+#include "ndn-lite/encode/name.h"  // NDN-Lite库中用于编码/解码NDN名字的功能
+#include "ndn-lite/encode/data.h"  // NDN-Lite库中用于编码/解码NDN数据包的功能
+#include "ndn-lite/encode/interest.h" // NDN-Lite库中用于编码/解码NDN兴趣包的功能
+#include "ndn-lite/app-support/ndn-sig-verifier.h" // 用于NDN签名验证的库
+
+// 使用的椭圆曲线私钥（硬编码） 
 uint8_t secp256r1_prv_key_str[32] = {
 0xA7, 0x58, 0x4C, 0xAB, 0xD3, 0x82, 0x82, 0x5B, 0x38, 0x9F, 0xA5, 0x45, 0x73, 0x00, 0x0A, 0x32,
 0x42, 0x7C, 0x12, 0x2F, 0x42, 0x4D, 0xB2, 0xAD, 0x49, 0x8C, 0x8D, 0xBF, 0x80, 0xC9, 0x36, 0xB5
 };
+
+// 使用的椭圆曲线公钥（硬编码）
 uint8_t secp256r1_pub_key_str[64] = {
 0x99, 0x26, 0xD6, 0xCE, 0xF8, 0x39, 0x0A, 0x05, 0xD1, 0x8C, 0x10, 0xAE, 0xEF, 0x3C, 0x2A, 0x3C,
 0x56, 0x06, 0xC4, 0x46, 0x0C, 0xE9, 0xE5, 0xE7, 0xE6, 0x04, 0x26, 0x43, 0x13, 0x8A, 0x3E, 0xD4,
@@ -35,37 +38,42 @@ uint8_t secp256r1_pub_key_str[64] = {
 0x32, 0x27, 0xDC, 0x05, 0x77, 0xA7, 0xDC, 0xE0, 0xA2, 0x69, 0xC8, 0x8B, 0x4C, 0xBF, 0x25, 0xF2
 };
 
+// 全局变量定义，保存服务器和客户端的端口、IP等信息
 in_port_t port1, port2;
 in_addr_t client_ip;
-ndn_name_t name_prefix;
-uint8_t buf[4096];
-uint8_t anchor_bytes[2048];
-uint32_t anchor_bytes_size;
-ndn_udp_face_t *face;
-bool running;
+ndn_name_t name_prefix;  // NDN中的名字前缀
+uint8_t buf[4096];       // 缓冲区
+uint8_t anchor_bytes[2048]; // 用于存储签名的缓冲区
+uint32_t anchor_bytes_size;  // 签名字节大小
+ndn_udp_face_t *face;     // UDP网络接口
+bool running;             // 标志位，用于控制主循环
 
+// 参数解析函数，解析命令行传入的参数
 int parseArgs(int argc, char *argv[]){
   char *sz_port1, *sz_port2, *sz_addr;
   uint32_t ul_port;
   struct hostent * host_addr;
   struct in_addr ** paddrs;
 
+  // 检查参数是否足够
   if(argc < 5){
     fprintf(stderr, "ERROR: wrong arguments.\n");
     printf("Usage: <local-port> <client-ip> <client-port> <name-prefix>\n");
     return 1;
   }
+  // 提取参数
   sz_port1 = argv[1];
   sz_addr = argv[2];
   sz_port2 = argv[3];
   //sz_prefix = argv[4];
   //data_need = argv[5];
-
+  // 检查参数是否为空
   if(strlen(sz_port1) <= 0 || strlen(sz_addr) <= 0 || strlen(sz_port2) <= 0){
     fprintf(stderr, "ERROR: wrong arguments.\n");
     return 1;
   }
 
+  // 解析客户端IP地址
   host_addr = gethostbyname(sz_addr);
   if(host_addr == NULL){
     fprintf(stderr, "ERROR: wrong hostname.\n");
@@ -79,13 +87,15 @@ int parseArgs(int argc, char *argv[]){
   }
   client_ip = paddrs[0]->s_addr;
 
+  // 解析本地端口号
   ul_port = strtoul(sz_port1, NULL, 10);
   if(ul_port < 1024 || ul_port >= 65536){
     fprintf(stderr, "ERROR: wrong port number.\n");
     return 3;
   }
-  port1 = htons((uint16_t) ul_port);
+  port1 = htons((uint16_t) ul_port);  // 将端口号转为网络字节序
 
+  // 解析客户端端口号
   ul_port = strtoul(sz_port2, NULL, 10);
   if(ul_port < 1024 || ul_port >= 65536){
     fprintf(stderr, "ERROR: wrong port number.\n");
@@ -93,6 +103,7 @@ int parseArgs(int argc, char *argv[]){
   }
   port2 = htons((uint16_t) ul_port);
 
+  // 解析名字前缀
   if(ndn_name_from_string(&name_prefix, argv[4], strlen(argv[4])) != NDN_SUCCESS){
     fprintf(stderr, "ERROR: wrong name.\n");
     return 4;
@@ -100,75 +111,108 @@ int parseArgs(int argc, char *argv[]){
   return 0;
 }
 
+
+// 1. 添加调试日志
+  void debug_interest_params(const ndn_interest_t* interest, const char* location){
+    printf("DEBUG[%s]: parameters.size = %d\n", location, interest->parameters.size);
+    printf("DEBUG[%s]: parameters.value = ", location);
+    for(int i = 0; i < interest->parameters.size; i++) {
+        printf("%02x ", interest->parameters.value[i]);
+    }
+    printf("\n");
+}
+
+// 当验证兴趣包成功时调用的回调函数
 void
-on_success(ndn_interest_t* interest)
+on_success(ndn_interest_t* interest, void* userdata)
 {
   printf("verify succeed");
-  char* file_name = interest->parameters.value;
-  int param_size = interest->parameters.size;
-  // tlv_parse_interest(interest,interest_size,3,
+  char* file_name = interest->parameters.value; // 获取兴趣包中的文件名
+
+  int param_size = interest->parameters.size;   // 获取参数的大小
+    // tlv_parse_interest(interest,interest_size,3,
   //                    TLV_INTARG_NAME_PTR,&ek_name,TLV_INTARG_PARAMS_BUF,(uint8_t**)&file_name,
   //                    TLV_INTARG_PARAMS_SIZE,&param_size);
-  file_name[param_size] = '\0';
+  
 
-  char temp_buffer[1024];
-  FILE *fp = fopen(file_name,"r");
+  file_name[param_size] = '\0';  // 确保文件名以空字符结尾
+
+  char temp_buffer[1024];        // 临时缓冲区，用于存储文件内容
+  FILE *fp = fopen(file_name,"r"); // 打开文件
   printf("The requested file name is: %s\nlength is %d\n",file_name,param_size);
   if(fp == NULL){
     fprintf(stderr, "ERROR: fail to open file.\n");
     return;
   }
+
+  // 从文件中读取内容
   if(fgets(temp_buffer,1024,fp) == NULL){
     fprintf(stderr, "ERROR: fail to read file.\n");
     return;
   }
   //printf("The content of the file is: %s, %lu\n",temp_buffer,strlen(temp_buffer) );
-
-  uint8_t data_buf[4096];
+  uint8_t data_buf[4096];  // 数据缓冲区
   size_t data_off;
 
+  // 将数据封装为NDN数据包，并对文件内容进行编码
   tlv_make_data(data_buf,4096,&data_off,
   3,TLV_DATAARG_NAME_PTR,&interest->name,
   TLV_DATAARG_CONTENT_BUF,(uint8_t*)temp_buffer,TLV_DATAARG_CONTENT_SIZE,strlen(temp_buffer));
 
+  // 通过NDN转发器发送数据包
   ndn_forwarder_put_data(data_buf,data_off);
   return;
+  debug_interest_params(interest, "on_success"); // 调试日志
 }
 
+// 当验证兴趣包失败时调用的回调函数
 void
-on_failure(ndn_interest_t* interest)
+on_failure(ndn_interest_t* interest, void* userdata)
 {
   printf("Cannot verify");
 }
 
-int on_interest(const uint8_t* interest, uint32_t interest_size, void* userdata){
-  ndn_data_t data;
-  ndn_encoder_t encoder;
 
-  printf("On interest\n");
-  ndn_sig_verifier_verify_int(interest, interest_size, on_success, NULL, on_failure, NULL);
+
+// 定义回调函数指针，成功和失败时分别调用相应的处理函数
+void (* p_on_success)(ndn_interest_t*, void*) = &on_success;  // &可以省略
+void (* p_on_failure)(ndn_interest_t*, void*) = &on_failure;  // &可以省略
+
+// 处理兴趣包的函数
+int on_interest(const uint8_t* interest, uint32_t interest_size, void* userdata) {
+  ndn_data_t data;  // 用于存储生成的数据包
+  ndn_encoder_t encoder;  // 编码器，用于编码数据包
+
+  printf("On interest\n");  // 输出兴趣包接收的提示信息
+  // 验证兴趣包的签名。验证通过调用成功回调，失败则调用失败回调
+  ndn_sig_verifier_verify_int(interest, interest_size, p_on_success, NULL, p_on_failure, NULL);
 }
 
-
+// 主函数
 int main(int argc, char *argv[]){
   int ret;
-  ndn_encoder_t encoder;
+  ndn_encoder_t encoder;  // 编码器，用于后续编码操作
 
-  if((ret = parseArgs(argc, argv)) != 0){
+  // 解析命令行参数
+  if ((ret = parseArgs(argc, argv)) != 0) {
     return ret;
   }
 
+  // 启动NDN-Lite库
   ndn_lite_startup();
+
+  // 创建UDP单播Face接口，用于通信
   face = ndn_udp_unicast_face_construct(INADDR_ANY, port1, client_ip, port2);
 
-  // simulate bootstrapping process
-  ndn_ecc_prv_t anchor_prv_key;
-  ndn_ecc_prv_init(&anchor_prv_key, secp256r1_prv_key_str, sizeof(secp256r1_prv_key_str),
-                   NDN_ECDSA_CURVE_SECP256R1, 123);
-  ndn_ecc_pub_t anchor_pub_key;
-  ndn_ecc_pub_init(&anchor_pub_key, secp256r1_pub_key_str, sizeof(secp256r1_pub_key_str), NDN_ECDSA_CURVE_SECP256R1, 123);
+  // 模拟引导过程，初始化锚点私钥和公钥
+  ndn_ecc_prv_t anchor_prv_key;  // 锚点私钥
+  ndn_ecc_prv_init(&anchor_prv_key, secp256r1_prv_key_str, sizeof(secp256r1_prv_key_str), NDN_ECDSA_CURVE_SECP256R1, 123);
 
-  // test
+  ndn_ecc_pub_t anchor_pub_key;  // 锚点公钥
+  ndn_ecc_pub_init(&anchor_pub_key, secp256r1_pub_key_str, sizeof(secp256r1_pub_key_str), NDN_ECDSA_CURVE_SECP256R1, 123);
+ printf("1\n"); 
+  // 测试生成的密钥对
+   // test
   // ndn_ecc_make_key(&anchor_pub_key, &anchor_prv_key, NDN_ECDSA_CURVE_SECP256R1, 123);
   // uint8_t* starting = ndn_ecc_get_pub_key_value(&anchor_pub_key);
   // for (int i = 0; i < ndn_ecc_get_pub_key_size(&anchor_pub_key); i++) {
@@ -186,23 +230,33 @@ int main(int argc, char *argv[]){
   //   ( i + 1 ) % 16 == 0 ? "\r\n" : " " );
   // }
 
+  // 这段代码打印公钥和私钥的值，检查密钥对是否生成正确
+
+  // 初始化锚点数据包
   ndn_data_t anchor;
-  ndn_data_init(&anchor);
-  ndn_name_from_string(&anchor.name, "/ndn-iot/controller/KEY", strlen("/ndn-iot/controller/KEY"));
+  ndn_data_init(&anchor);  // 初始化数据包
+  ndn_name_from_string(&anchor.name, "/ndn-iot/controller/KEY", strlen("/ndn-iot/controller/KEY"));  // 设置数据包名字
   ndn_name_t anchor_id;
-  memcpy(&anchor_id, &anchor.name, sizeof(ndn_name_t));
-  anchor_id.components_size -= 1;
-  ndn_name_append_keyid(&anchor.name, 123);
-  ndn_name_append_string_component(&anchor.name, "self", strlen("self"));
-  ndn_name_append_keyid(&anchor.name, 456);
+  memcpy(&anchor_id, &anchor.name, sizeof(ndn_name_t));  // 复制名字到anchor_id
+  anchor_id.components_size -= 1;  // 去掉最后一个组件，用于签名操作
+  ndn_name_append_keyid(&anchor.name, 123);  // 添加密钥ID组件
+  ndn_name_append_string_component(&anchor.name, "self", strlen("self"));  // 添加自定义字符串组件
+  ndn_name_append_keyid(&anchor.name, 456);  // 再次添加密钥ID组件
+ printf("2\n"); 
+  // 设置数据内容为锚点的公钥
   ndn_data_set_content(&anchor, secp256r1_pub_key_str, sizeof(secp256r1_pub_key_str));
+
+  // 对数据包进行编码并签名
   encoder_init(&encoder, anchor_bytes, sizeof(anchor_bytes));
   ndn_data_tlv_encode_ecdsa_sign(&encoder, &anchor, &anchor_id, &anchor_prv_key);
-  anchor_bytes_size = encoder.offset;
+  anchor_bytes_size = encoder.offset;  // 保存编码后的字节大小
+ printf("3\n"); 
+  // 解码数据包，不进行验证
   ndn_data_tlv_decode_no_verify(&anchor, encoder.output_value, encoder.offset, NULL, NULL);
+ printf("4\n"); 
+  // 将锚点数据存入密钥存储，作为信任锚点
   ndn_key_storage_set_trust_anchor(&anchor);
-
-  // test key pair
+// test key pair
   // ndn_encoder_t encoder2;
   // encoder_init(&encoder2, buf, sizeof(buf));
   // ndn_data_tlv_encode(&encoder2, &anchor);
@@ -213,37 +267,54 @@ int main(int argc, char *argv[]){
   // }
 
   // ndn_ecc_prv_t self_prv_key
+  //ndn_ecc_pub_t* self_pub = NULL;
+  // 生成新的密钥对
   ndn_ecc_pub_t* self_pub = NULL;
   ndn_ecc_prv_t* self_prv = NULL;
-  ndn_key_storage_get_empty_ecc_key(&self_pub, &self_prv);
-  ndn_ecc_make_key(self_pub, self_prv, NDN_ECDSA_CURVE_SECP256R1, 234);
+  ndn_key_storage_get_empty_ecc_key(&self_pub, &self_prv);  // 获取空的ECC密钥位置
+  ndn_ecc_make_key(self_pub, self_prv, NDN_ECDSA_CURVE_SECP256R1, 234);  // 生成密钥对
 
-  // self cert
+  // 初始化自证书
   ndn_data_t self_cert;
-  ndn_data_init(&self_cert);
-  ndn_name_from_string(&self_cert.name, "/ndn-iot/bedroom/file-server/KEY", strlen("/ndn-iot/bedroom/file-server/KEY"));
-  ndn_name_append_keyid(&self_cert.name, 234);
-  ndn_name_append_string_component(&self_cert.name, "home", strlen("home"));
-  ndn_name_append_keyid(&self_cert.name, 567);
-  ndn_data_set_content(&self_cert, ndn_ecc_get_pub_key_value(self_pub),
-                       ndn_ecc_get_pub_key_size(self_pub));
+  ndn_data_init(&self_cert);  // 初始化数据包
+  ndn_name_from_string(&self_cert.name, "/ndn-iot/bedroom/file-server/KEY", strlen("/ndn-iot/bedroom/file-server/KEY"));  // 设置名字
+  ndn_name_append_keyid(&self_cert.name, 234);  // 添加密钥ID组件
+  ndn_name_append_string_component(&self_cert.name, "home", strlen("home"));  // 添加自定义字符串组件
+  ndn_name_append_keyid(&self_cert.name, 567);  // 再次添加密钥ID组件
+
+  // 设置自证书的内容为自身的公钥
+  ndn_data_set_content(&self_cert, ndn_ecc_get_pub_key_value(self_pub), ndn_ecc_get_pub_key_size(self_pub));
+
+  // 对自证书进行编码并签名
   encoder_init(&encoder, anchor_bytes, sizeof(anchor_bytes));
   ndn_data_tlv_encode_ecdsa_sign(&encoder, &self_cert, &anchor_id, &anchor_prv_key);
+
+  // 解码自证书，不进行验证
   ndn_data_tlv_decode_no_verify(&self_cert, encoder.output_value, encoder.offset, NULL, NULL);
+
+  // 将自证书和私钥存入密钥存储
   ndn_key_storage_set_self_identity(&self_cert, self_prv);
 
-  // set up sig verifier
+  // 设置签名验证器
   ndn_sig_verifier_after_bootstrapping(&face->intf);
 
-  running = true;
+  running = true;  // 设置运行标志位为true，表示进入事件循环
+
+  // 编码名字前缀
   encoder_init(&encoder, buf, sizeof(buf));
   ndn_name_tlv_encode(&encoder, &name_prefix);
-  ndn_forwarder_register_prefix(encoder.output_value, encoder.offset, on_interest, NULL);
-  while(running){
-    ndn_forwarder_process();
-    usleep(10000);
+
+  // 注册名字前缀，并指定处理兴趣包的回调函数
+ 
+
+  // 进入事件循环，处理收到的兴趣包
+  while (running) {
+    ndn_forwarder_register_prefix(encoder.output_value, encoder.offset, on_interest, NULL);
+    ndn_forwarder_process();  // 处理转发器中的事件
+    usleep(10000);  // 休眠10毫秒，防止占用过多CPU
   }
 
+  // 退出事件循环后销毁Face接口，释放资源
   ndn_face_destroy(&face->intf);
 
   return 0;

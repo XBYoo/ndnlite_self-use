@@ -81,7 +81,7 @@ void
 on_data(const uint8_t* rawdata, uint32_t data_size, void* userdata)
 {
   ndn_data_t data;
-  printf("收到数据\n");
+  printf("data-recv\n");
   
   // 解码数据包并验证其摘要
   if (ndn_data_tlv_decode_digest_verify(&data, rawdata, data_size)) {
@@ -90,7 +90,9 @@ on_data(const uint8_t* rawdata, uint32_t data_size, void* userdata)
   }
 
   // 输出数据内容
-  printf("内容为: %s\n", data.content_value);
+  //printf("data: %s\n data_end\n", data.content_value);
+  printf("data: %.*s\n", data.content_size, data.content_value);  // 按照数据大小输出
+//%.*s 是指定字符串的长度进行输出的格式符，确保只输出指定大小的内容，避免超出数据范围导致的乱码。 
 }
 
 // 超时处理函数
@@ -129,13 +131,11 @@ main(int argc, char *argv[])
   // 发送兴趣包，指定回调函数
   ndn_forwarder_express_interest_struct(&interest, on_data, on_timeout, NULL);
 
-  running = true;
-
   // 循环处理NDN事件
   while (running) {
     ndn_forwarder_process();
     usleep(10000);  // 休眠10毫秒
-  }
+    }
 
   // 销毁接口
   ndn_face_destroy(&face->intf);
