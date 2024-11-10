@@ -24,6 +24,9 @@
 #include "ndn-lite/encode/interest.h" // NDN-Lite库中用于编码/解码NDN兴趣包的功能
 #include "ndn-lite/app-support/ndn-sig-verifier.h" // 用于NDN签名验证的库
 
+#define CHUNK_SIZE      1024//分片大小
+#define CHUNK_SIZE_TLV  4096//TLV编码预留大小
+
 // 使用的椭圆曲线私钥（硬编码） 
 uint8_t secp256r1_prv_key_str[32] = {
 0xA7, 0x58, 0x4C, 0xAB, 0xD3, 0x82, 0x82, 0x5B, 0x38, 0x9F, 0xA5, 0x45, 0x73, 0x00, 0x0A, 0x32,
@@ -112,7 +115,7 @@ int parseArgs(int argc, char *argv[]){
 }
 
 
-// 1. 添加调试日志
+// 调试日志
   void debug_interest_params(const ndn_interest_t* interest, const char* location){
     printf("DEBUG[%s]: parameters.size = %d\n", location, interest->parameters.size);
     printf("DEBUG[%s]: parameters.value = ", location);
@@ -127,42 +130,70 @@ void
 on_success(ndn_interest_t* interest, void* userdata)
 {
   printf("verify succeed");
-  char* file_name = interest->parameters.value; // 获取兴趣包中的文件名
-
-  int param_size = interest->parameters.size;   // 获取参数的大小
-    // tlv_parse_interest(interest,interest_size,3,
-  //                    TLV_INTARG_NAME_PTR,&ek_name,TLV_INTARG_PARAMS_BUF,(uint8_t**)&file_name,
-  //                    TLV_INTARG_PARAMS_SIZE,&param_size);
-  
-
+  char* file_name = interest->parameters.value; // 文件名
+  int param_size = interest->parameters.size;   // 文件名大小
   file_name[param_size] = '\0';  // 确保文件名以空字符结尾
 
-  char temp_buffer[1024];        // 临时缓冲区，用于存储文件内容
-  FILE *fp = fopen(file_name,"r"); // 打开文件
+  unsigned char temp_buffer[CHUNK_SIZE];        // 分片缓存
+  //FILE *fp = fopen(file_name,"r");
+  FILE *fp = fopen(file_name, "rb");
   printf("The requested file name is: %s\nlength is %d\n",file_name,param_size);
   if(fp == NULL){
     fprintf(stderr, "ERROR: fail to open file.\n");
     return;
   }
-
   // 从文件中读取内容
+  #if 0
   if(fgets(temp_buffer,1024,fp) == NULL){
     fprintf(stderr, "ERROR: fail to read file.\n");
     return;
   }
-  //printf("The content of the file is: %s, %lu\n",temp_buffer,strlen(temp_buffer) );
-  uint8_t data_buf[4096];  // 数据缓冲区
-  size_t data_off;
-
   // 将数据封装为NDN数据包，并对文件内容进行编码
   tlv_make_data(data_buf,4096,&data_off,
   3,TLV_DATAARG_NAME_PTR,&interest->name,
-  TLV_DATAARG_CONTENT_BUF,(uint8_t*)temp_buffer,TLV_DATAARG_CONTENT_SIZE,strlen(temp_buffer));
-
+  TLV_DATAARG_CONTENT_BUF,(uint8_t*)temp_buffer,TLV_DATAARG_CONTENT_SIZE,strlen(temp_buffer));//data_buf为TLV编码后数据
   // 通过NDN转发器发送数据包
   ndn_forwarder_put_data(data_buf,data_off);
   return;
-  debug_interest_params(interest, "on_success"); // 调试日志
+  #else
+  // 获取文件大小
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    printf("File size: %ld bytes\n", file_size);
+    long file_size_remaining = file_size;
+    uint8_t data_buf[CHUNK_SIZE_TLV];
+    size_t data_off;
+    uint64_t part_number = 0;  // 分片编号
+    int arg = 0;
+    while (file_size_remaining > 0) {
+        // 计算每次读取的大小
+        size_t bytes_to_read = (file_size_remaining < CHUNK_SIZE) ? file_size_remaining : CHUNK_SIZE;
+        size_t bytes_read = fread(temp_buffer, 1, bytes_to_read, fp);
+        
+        if (bytes_read == 0) {
+            break;
+        }
+        //uint64_t part_number = (file_size_remaining < CHUNK_SIZE) ? (uint64_t)-1 : part_number;
+        tlv_make_data(data_buf,CHUNK_SIZE_TLV,&data_off,  // 将数据封装为NDN数据包，并对文件内容进行编码,data_buf为TLV编码后数据
+        6,TLV_DATAARG_NAME_PTR,&interest->name
+        ,TLV_DATAARG_CONTENT_BUF,(uint8_t*)temp_buffer
+        ,TLV_DATAARG_CONTENT_SIZE,bytes_to_read
+        ,TLV_DATAARG_NAME_SEGNO_U64,part_number
+        ,TLV_DATAARG_FINALBLOCKID_U64,(uint64_t)(file_size/CHUNK_SIZE)
+        ,TLV_DATAARG_FRESHNESSPERIOD_U64, (uint64_t)1500);  // 设置1.5秒的新鲜度期
+        ndn_forwarder_put_data(data_buf,data_off); // 通过NDN转发器发送数据包
+        // 更新剩余文件大小
+        file_size_remaining -= bytes_read;
+        part_number++;
+        printf("DEBUG: part_number = %d ", part_number);
+    }
+
+  #endif
+ 
+  
+  return;
+  debug_interest_params(interest, "on_success");
 }
 
 // 当验证兴趣包失败时调用的回调函数
@@ -210,26 +241,23 @@ int main(int argc, char *argv[]){
 
   ndn_ecc_pub_t anchor_pub_key;  // 锚点公钥
   ndn_ecc_pub_init(&anchor_pub_key, secp256r1_pub_key_str, sizeof(secp256r1_pub_key_str), NDN_ECDSA_CURVE_SECP256R1, 123);
- printf("1\n"); 
+  printf("1\n"); 
   // 测试生成的密钥对
-   // test
-  // ndn_ecc_make_key(&anchor_pub_key, &anchor_prv_key, NDN_ECDSA_CURVE_SECP256R1, 123);
-  // uint8_t* starting = ndn_ecc_get_pub_key_value(&anchor_pub_key);
-  // for (int i = 0; i < ndn_ecc_get_pub_key_size(&anchor_pub_key); i++) {
-  //   // printf()
-  //   fprintf(stdout, "0x%02X%s",
-  //   *(starting + i),
-  //   ( i + 1 ) % 16 == 0 ? "\r\n" : " " );
-  // }
-  // printf("\n\n");
-  // starting = &anchor_prv_key.abs_key.key_value;
-  // for (int i = 0; i < ndn_ecc_get_prv_key_size(&anchor_prv_key); i++) {
-  //   // printf()
-  //   fprintf(stdout, "0x%02X%s",
-  //   *(starting + i),
-  //   ( i + 1 ) % 16 == 0 ? "\r\n" : " " );
-  // }
-
+  #if 0
+  ndn_ecc_make_key(&anchor_pub_key, &anchor_prv_key, NDN_ECDSA_CURVE_SECP256R1, 123);
+  uint8_t* starting = ndn_ecc_get_pub_key_value(&anchor_pub_key);
+  for (int i = 0; i < ndn_ecc_get_pub_key_size(&anchor_pub_key); i++) {
+    fprintf(stdout, "0x%02X%s", 
+    *(starting + i), ( i + 1 ) % 16 == 0 ? "\r\n" : " " );
+  }
+  printf("\n\n");
+  starting = &anchor_prv_key.abs_key.key_value;
+  for (int i = 0; i < ndn_ecc_get_prv_key_size(&anchor_prv_key); i++) {
+      fprintf(stdout, "0x%02X%s",
+     *(starting + i),
+     ( i + 1 ) % 16 == 0 ? "\r\n" : " " );
+  }
+  #endif
   // 这段代码打印公钥和私钥的值，检查密钥对是否生成正确
 
   // 初始化锚点数据包
@@ -254,20 +282,9 @@ int main(int argc, char *argv[]){
   // 解码数据包，不进行验证
   ndn_data_tlv_decode_no_verify(&anchor, encoder.output_value, encoder.offset, NULL, NULL);
  printf("4\n"); 
+
   // 将锚点数据存入密钥存储，作为信任锚点
   ndn_key_storage_set_trust_anchor(&anchor);
-// test key pair
-  // ndn_encoder_t encoder2;
-  // encoder_init(&encoder2, buf, sizeof(buf));
-  // ndn_data_tlv_encode(&encoder2, &anchor);
-  // ndn_data_t temp_data;
-  // int suc = ndn_data_tlv_decode_ecdsa_verify(&temp_data, encoder2.output_value, encoder2.offset, &anchor_pub_key);
-  // if (suc == 0) {
-  //   printf("key pair works fine");
-  // }
-
-  // ndn_ecc_prv_t self_prv_key
-  //ndn_ecc_pub_t* self_pub = NULL;
   // 生成新的密钥对
   ndn_ecc_pub_t* self_pub = NULL;
   ndn_ecc_prv_t* self_prv = NULL;
@@ -298,7 +315,7 @@ int main(int argc, char *argv[]){
   // 设置签名验证器
   ndn_sig_verifier_after_bootstrapping(&face->intf);
 
-  running = true;  // 设置运行标志位为true，表示进入事件循环
+  running = true;
 
   // 编码名字前缀
   encoder_init(&encoder, buf, sizeof(buf));

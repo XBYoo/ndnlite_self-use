@@ -110,37 +110,11 @@ int parseArgs(int argc, char *argv[]){
 
   return 0;
 }
-// 保存文件函数，接收到的数据被保存到文件中
-int save_file(uint8_t* file_data);
-
-void on_data(const uint8_t* rawdata, uint32_t data_size, void* userdata)
-{
-  printf("Receiving data\n");
-  // 这里用于解析接收到的数据
-  // char data_buf[1024];
-  char* data_buf;
-  int data_off;
- // 分配临时缓冲区来存储接收到的数据
-  uint8_t* temp_buffer = malloc(data_size);
-  memcpy(temp_buffer, rawdata, data_size);
- // 解析接收到的TLV数据
-  //tlv_parse_data(rawdata,data_size,2,TLV_DATAARG_CONTENT_BUF,(uint8_t**)&data_buf,TLV_DATAARG_CONTENT_SIZE,&data_off);
-  tlv_parse_data(temp_buffer,data_size,2,TLV_DATAARG_CONTENT_BUF,(uint8_t**)&data_buf,TLV_DATAARG_CONTENT_SIZE,&data_off);
- // 将解析后的数据保存到文件
-  //printf("data\n%s\n",data_buf);
-  save_file(data_buf);
-   // 使用完后记得释放
-   // 释放临时缓冲区
-  free(temp_buffer);
-}
-
-
-
-// 保存文件的实现，将接收到的文件名称保存到本地
+#if 1
 int
 save_file(uint8_t* file_data)
 {
-  FILE * fp = fopen(file_name,"w");
+  FILE * fp = fopen(file_name,"ab");
   if(fp == NULL){
     fprintf(stderr, "ERROR: fail to open a file when writing.\n");
     return 1;
@@ -153,31 +127,73 @@ save_file(uint8_t* file_data)
   return 0;
 }
 
-/*save_file(uint8_t* file_data)
+void on_data(const uint8_t* rawdata, uint32_t data_size, void* userdata)
 {
-FILE *fp = fopen(file_name, "rb"); // Open in binary mode
-if (fp == NULL) {
-    fprintf(stderr, "ERROR: fail to open file.\n");
-    return;
+  printf("Receiving data\n");
+  char* data_buf;
+  int data_off;
+
+ // 无需临时缓冲区
+  uint8_t* temp_buffer = (uint8_t*)rawdata;
+  // 解析数据
+  tlv_parse_data(temp_buffer,data_size,
+  2,TLV_DATAARG_CONTENT_BUF,(uint8_t**)&data_buf,
+  TLV_DATAARG_CONTENT_SIZE,&data_off);
+ // 将解析后的数据保存到文件
+  //printf("data\n%s\n",data_buf);
+  save_file(data_buf);
 }
 
-size_t bytes_read = fread(temp_buffer, 1, sizeof(temp_buffer), fp);
-if (bytes_read == 0) {
-    fprintf(stderr, "ERROR: fail to read file or file is empty.\n");
-    fclose(fp);
-    return;
-}
-fclose(fp);
 
-// Make sure data is properly terminated if used as a string
-if (bytes_read < sizeof(temp_buffer)) {
-    temp_buffer[bytes_read] = '\0';
+#else
+// 保存文件
+int save_file(char* data_buf,uint32_t data_size)
+{
+  FILE * fp = fopen(file_name,"ab");
+  if(fp == NULL){
+    fprintf(stderr, "ERROR: fail to open a file when writing.\n");
+    return 1;
+  }
+  if(fwrite(data_buf,1,data_size,fp) == EOF){
+    fprintf(stderr, "ERROR: fail to write data.\n");
+    return 1;
+  }
+  fclose(fp);
+  return 0;
 }
+
+void on_data(const uint8_t* rawdata, uint32_t data_size, void* userdata)
+{
+  printf("Receiving data\n");
+  char* data_buf;
+  int data_off;
+  uint64_t part_number = 1;
+  //uint64_t final_part_num = 2;
+  // 解析数据
+
+
+  // 分配临时缓冲区来存储接收到的数据,对传来的rawdata拷贝解码，避免const冲突
+  uint8_t* temp_buffer = malloc(data_size);
+  memcpy(temp_buffer, rawdata, data_size);
+
+  tlv_parse_data(temp_buffer,data_size,
+  3,TLV_DATAARG_CONTENT_BUF,(uint8_t**)&data_buf
+  ,TLV_DATAARG_CONTENT_SIZE,&data_off
+  ,TLV_DATAARG_NAME_SEGNO_U64,&part_number
+  //TLV_DATAARG_FINALBLOCKID_U64,&final_part_num
+  );
+
+ // 将解析后的数据保存到文件
+  save_file(data_buf,data_size);
+   // 使用完后记得释放
+   // 释放临时缓冲区
+  printf("part_number_val: %ju\n", (int)part_number);
+  free(temp_buffer);
 }
-*/
+  #endif
 
 //volatile bool running = true;
-
+#if 0
 // 信号处理函数
 void signal_handler(int signum) {
     if (signum == SIGINT) {
@@ -198,9 +214,8 @@ void set_nonblocking() {
     int flags = fcntl(STDIN_FILENO, F_GETFL);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 }
+#endif
 
-
-// 处理请求超时的回调函数
 void on_timeout(void* userdata){
   printf("On file request interest timeout\n");
   running = false;
@@ -265,7 +280,7 @@ int main(int argc, char *argv[]){
   // 准备要发送的兴趣包(Interest)
   running = true;
   // 初始化编码器，用于将NDN的名字或兴趣包等内容进行TLV编码。
-// 使用`buf`作为编码的目标缓冲区，大小为4096字节。
+  // 使用`buf`作为编码的目标缓冲区，大小为4096字节。
   encoder_init(&encoder, buf, 4096);
   // 将NDN名字`name_prefix`进行TLV编码，准备后续发送兴趣包。
   ndn_name_tlv_encode(&encoder, &name_prefix);
@@ -301,16 +316,14 @@ int main(int argc, char *argv[]){
   //                   TLV_INTARG_SIGTYPE_U8, NDN_SIG_TYPE_ECDSA_SHA256, TLV_INTARG_SIGKEY_PTR, self_prv,
   //                   TLV_INTARG_IDENTITYNAME_PTR, &storage->self_identity);
   // 初始化编码器以编码Interest包
-// `encoder_init`用于初始化编码器，`interest_buf`为目标缓冲区，大小为4096字节。
+  // `encoder_init`用于初始化编码器，`interest_buf`为目标缓冲区，大小为4096字节。
   encoder_init(&encoder, interest_buf, 4096);
   // 使用编码器将Interest包编码为TLV格式。
   ndn_interest_tlv_encode(&encoder, &request);
-  // 向NDN转发器发送Interest包
-  // ndn_forwarder_express_interest`函数发送Interest包，
-  // 同时注册两个回调函数：`on_data`用于处理接收到的数据包，`on_timeout`处理超时情况。
+
   ndn_forwarder_express_interest(interest_buf, encoder.offset, on_data, on_timeout, NULL);
     // 注册信号处理
-    signal(SIGINT, signal_handler);//ctrl+c触发中断 阻塞的？(ctrl+c加回车信号中断)（程序中自带信号处理机制）
+    //signal(SIGINT, signal_handler);//ctrl+c触发中断 阻塞的？(ctrl+c加回车信号中断)（程序中自带信号处理机制）
     //printf("Press 'q' to quit.\n");
     // 设置非阻塞输入
     //set_nonblocking();
