@@ -1,10 +1,3 @@
-/*
- * Copyright (C) 2019 Xinyu Ma, Zhiyi Zhang
- *
- * 本文件遵循GNU Lesser General Public License v3.0的条款和条件。有关更多详细信息，请参见顶级目录中的LICENSE文件。
- *
- * 完整的NDN IOT PKG作者和贡献者列表请参见AUTHORS.md。
- */
 #include <stdio.h>
 #include <netdb.h>
 #include <unistd.h>
@@ -89,23 +82,23 @@ int parseArgs(int argc, char *argv[])
 void on_data(const uint8_t* rawdata, uint32_t data_size, void* userdata)
 {
   ndn_data_t data;
-  printf("On data\n");
+  printf("数据解码处理(ondata)\n");
   // 解码数据并验证摘要
   if (ndn_data_tlv_decode_digest_verify(&data, rawdata, data_size)) {
-    printf("Decoding failed.\n");
+    printf("解码失败.\n");
   }
   // 输出数据内容
-  printf("It says: %s\n", data.content_value);
+  printf("收到数据内容: %s\n", data.content_value);
   running = false; // 停止运行
 }
 
 // 处理超时的回调函数
 void on_timeout(void* userdata) {
-  printf("On timeout\n");
+  printf("超时\n");
   running = false; // 停止运行
 }
 
-// 主函数
+
 int main(int argc, char *argv[])
 {
   ndn_udp_face_t *face;

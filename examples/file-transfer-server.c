@@ -186,14 +186,12 @@ on_success(ndn_interest_t* interest, void* userdata)
         // 更新剩余文件大小
         file_size_remaining -= bytes_read;
         part_number++;
-        printf("DEBUG: part_number = %d ", part_number);
+        printf("circulation: part_number = %d \n", part_number);
     }
 
   #endif
- 
-  
   return;
-  debug_interest_params(interest, "on_success");
+  debug_interest_params(interest, "on_forwarder");
 }
 
 // 当验证兴趣包失败时调用的回调函数

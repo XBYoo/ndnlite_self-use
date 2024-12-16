@@ -1,12 +1,3 @@
-/*
- * Copyright (C) 2019 Xinyu Ma, Zhiyi Zhang
- *
- * This file是由GNU Lesser General Public License v3.0许可的。
- * 详情请查看LICENSE文件，了解更多条款与条件。
- *
- * 查看AUTHORS.md获取NDN IOT PKG的贡献者名单。
- */
-
 #include <stdio.h>       // 标准输入输出库
 #include <netdb.h>       // 提供网络数据库操作函数
 #include <unistd.h>      // 提供POSIX操作系统API，如usleep()
@@ -111,8 +102,7 @@ on_interest(const uint8_t* interest, uint32_t interest_size, void* userdata)
   printf("On interest\n");
   data.name = name_prefix;  // 使用全局的名字前缀
   
-  //ndn_data_set_content(&data, (uint8_t*)str, strlen(str) + 1);  // 设置数据包内容
-  ndn_data_set_content(&data, (uint8_t*)str, strlen(str));  // 不要发送 '\0'
+  ndn_data_set_content(&data, (uint8_t*)str, strlen(str) + 1);  // 附带/0 +1
 
   ndn_metainfo_init(&data.metainfo);  // 初始化元信息
   ndn_metainfo_set_content_type(&data.metainfo, NDN_CONTENT_TYPE_BLOB);  // 设置数据包类型

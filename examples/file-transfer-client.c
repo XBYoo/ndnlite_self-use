@@ -133,7 +133,6 @@ void on_data(const uint8_t* rawdata, uint32_t data_size, void* userdata)
   char* data_buf;
   int data_off;
 
- // 无需临时缓冲区
   uint8_t* temp_buffer = (uint8_t*)rawdata;
   // 解析数据
   tlv_parse_data(temp_buffer,data_size,
